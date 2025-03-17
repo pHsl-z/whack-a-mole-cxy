@@ -6,10 +6,21 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeDisplay = document.querySelector('#time');
     const startButton = document.querySelector('#startButton');
     
+    // 创建音效
+    const hitSound = new Audio('sounds/hit.mp3');
+    const popSound = new Audio('sounds/pop.mp3');
+    const missSound = new Audio('sounds/miss.mp3'); // 添加没点中的音效
+    
+    // 预加载音效
+    hitSound.load();
+    popSound.load();
+    missSound.load();
+    
     let score = 0;
     let timeLeft = 30;
     let gameInterval;
     let isPlaying = false;
+    let lastMissTime = 0; // 记录上次没点中的时间
     const originalButtonText = startButton.textContent;
 
     // 禁用双击缩放
@@ -25,6 +36,16 @@ document.addEventListener('DOMContentLoaded', () => {
             e.preventDefault();
         }
     }, { passive: false });
+
+    // 播放音效的函数
+    function playSound(sound) {
+        // 克隆音效对象以支持重叠播放
+        const soundClone = sound.cloneNode();
+        soundClone.volume = 0.6; // 设置音量为60%
+        soundClone.play().catch(error => {
+            console.log('播放音效失败:', error);
+        });
+    }
 
     function randomTime(min, max) {
         return Math.round(Math.random() * (max - min) + min);
@@ -54,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mole = hole.querySelector('.mole');
         
         mole.classList.add('show');
+        playSound(popSound); // 播放地鼠出现的音效
         
         setTimeout(() => {
             if (!mole.classList.contains('bonked')) {
@@ -69,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (count > 0) {
                 setTimeout(() => countdown(count - 1).then(resolve), 1000);
             } else {
+                playSound(popSound); // 只在倒计时结束时播放一次提示音
                 resolve();
             }
         });
@@ -84,6 +107,7 @@ document.addEventListener('DOMContentLoaded', () => {
         score = 0;
         timeLeft = 30;
         isPlaying = true;
+        lastMissTime = 0; // 重置没点中时间
         scoreDisplay.textContent = score;
         timeDisplay.textContent = timeLeft;
         startButton.textContent = timeLeft + '秒';
@@ -124,16 +148,25 @@ document.addEventListener('DOMContentLoaded', () => {
         const mole = hole.querySelector('.mole');
         const hitEffect = hole.querySelector('.hit-effect');
         
-        if (!mole.classList.contains('show') || mole.classList.contains('bonked')) return;
+        if (!mole.classList.contains('show') || mole.classList.contains('bonked')) {
+            // 没点中地鼠
+            const currentTime = Date.now();
+            if (currentTime - lastMissTime < 1000) { // 如果两次没点中的时间间隔小于1秒
+                playSound(missSound); // 播放没点中的音效
+            }
+            lastMissTime = currentTime;
+            return;
+        }
         
         score++;
         scoreDisplay.textContent = score;
+        lastMissTime = 0; // 重置没点中时间
         
         mole.classList.add('bonked');
         hitEffect.classList.add('show');
         
-        // 播放打中音效（如果需要）
-        // playHitSound();
+        // 播放打中音效
+        playSound(hitSound);
         
         setTimeout(() => {
             mole.classList.remove('show');
