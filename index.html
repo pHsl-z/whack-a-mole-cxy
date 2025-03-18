@@ -7,7 +7,22 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="game-container">
+    <!-- 欢迎界面 -->
+    <div class="welcome-screen">
+        <div class="welcome-content">
+            <!-- 这里可以放置您的欢迎界面内容 -->
+            <h1>一起来打曹星妍大魔王</h1>
+            <div class="loading-container">
+                <div class="loading-bar">
+                    <div class="loading-progress"></div>
+                </div>
+                <div class="loading-text">加载中... <span class="loading-percentage">0%</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 游戏主界面 -->
+    <div class="game-container" style="display: none;">
         <div class="game-info">
             <div class="score">得分: <span id="score">0</span></div>
             <div class="time">剩余时间: <span id="time">30</span></div>

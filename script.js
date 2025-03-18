@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const welcomeScreen = document.querySelector('.welcome-screen');
+    const gameContainer = document.querySelector('.game-container');
+    const loadingProgress = document.querySelector('.loading-progress');
+    const loadingPercentage = document.querySelector('.loading-percentage');
     const holes = document.querySelectorAll('.hole');
     const moles = document.querySelectorAll('.mole');
     const hitEffects = document.querySelectorAll('.hit-effect');
@@ -9,19 +13,66 @@ document.addEventListener('DOMContentLoaded', () => {
     // 创建音效
     const hitSound = new Audio('sounds/hit.mp3');
     const popSound = new Audio('sounds/pop.mp3');
-    const missSound = new Audio('sounds/miss.mp3'); // 添加没点中的音效
-    
-    // 预加载音效
-    hitSound.load();
-    popSound.load();
-    missSound.load();
+    const missSound = new Audio('sounds/miss.mp3');
     
     let score = 0;
     let timeLeft = 30;
     let gameInterval;
     let isPlaying = false;
-    let lastMissTime = 0; // 记录上次没点中的时间
+    let lastMissTime = 0;
     const originalButtonText = startButton.textContent;
+
+    // 加载资源
+    async function loadResources() {
+        const resources = [
+            { type: 'image', src: 'images/mole.png' },
+            { type: 'image', src: 'images/mole-bonked.png' },
+            { type: 'audio', src: 'sounds/hit.mp3' },
+            { type: 'audio', src: 'sounds/pop.mp3' },
+            { type: 'audio', src: 'sounds/miss.mp3' }
+        ];
+
+        let loadedCount = 0;
+        const totalResources = resources.length;
+
+        for (const resource of resources) {
+            try {
+                if (resource.type === 'image') {
+                    await new Promise((resolve, reject) => {
+                        const img = new Image();
+                        img.onload = resolve;
+                        img.onerror = reject;
+                        img.src = resource.src;
+                    });
+                } else if (resource.type === 'audio') {
+                    await new Promise((resolve, reject) => {
+                        const audio = new Audio();
+                        audio.oncanplaythrough = resolve;
+                        audio.onerror = reject;
+                        audio.src = resource.src;
+                    });
+                }
+                loadedCount++;
+                const progress = (loadedCount / totalResources) * 100;
+                loadingProgress.style.width = `${progress}%`;
+                loadingPercentage.textContent = `${Math.round(progress)}%`;
+            } catch (error) {
+                console.error(`加载资源失败: ${resource.src}`, error);
+            }
+        }
+
+        // 加载完成后显示游戏界面
+        setTimeout(() => {
+            welcomeScreen.style.opacity = '0';
+            setTimeout(() => {
+                welcomeScreen.style.display = 'none';
+                gameContainer.style.display = 'block';
+            }, 500);
+        }, 500);
+    }
+
+    // 开始加载资源
+    loadResources();
 
     // 禁用双击缩放
     document.addEventListener('touchstart', (e) => {
@@ -39,9 +90,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 播放音效的函数
     function playSound(sound) {
-        // 克隆音效对象以支持重叠播放
         const soundClone = sound.cloneNode();
-        soundClone.volume = 0.6; // 设置音量为60%
+        soundClone.volume = 0.6;
         soundClone.play().catch(error => {
             console.log('播放音效失败:', error);
         });
