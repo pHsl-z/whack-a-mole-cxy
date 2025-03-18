@@ -10,11 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeDisplay = document.querySelector('#time');
     const startButton = document.querySelector('#startButton');
     
-    // 创建音效
-    const hitSound = new Audio('sounds/hit.mp3');
-    const popSound = new Audio('sounds/pop.mp3');
-    const missSound = new Audio('sounds/miss.mp3');
-    const endSound = new Audio('sounds/end.mp3'); // 添加结束音效
+    // 音频上下文和音频缓存
+    let audioContext;
+    const audioBuffers = new Map();
     
     let score = 0;
     let timeLeft = 30;
@@ -129,13 +127,61 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, { passive: false });
 
-    // 播放音效的函数
-    function playSound(sound) {
-        const soundClone = sound.cloneNode();
-        soundClone.volume = 0.6;
-        soundClone.play().catch(error => {
-            console.log('播放音效失败:', error);
-        });
+    // 初始化音频上下文
+    async function initAudio() {
+        try {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // 预加载所有音频
+            const audioFiles = {
+                'hit': 'sounds/hit.mp3',
+                'pop': 'sounds/pop.mp3',
+                'miss': 'sounds/miss.mp3',
+                'end': 'sounds/end.mp3'
+            };
+            
+            for (const [name, url] of Object.entries(audioFiles)) {
+                try {
+                    const response = await fetch(url);
+                    const arrayBuffer = await response.arrayBuffer();
+                    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                    audioBuffers.set(name, audioBuffer);
+                } catch (error) {
+                    console.error(`音频 ${name} 加载失败:`, error);
+                }
+            }
+        } catch (error) {
+            console.error('音频上下文初始化失败:', error);
+        }
+    }
+
+    // 播放音效的新函数
+    function playSound(soundType) {
+        if (!audioContext || audioContext.state === 'suspended') {
+            audioContext?.resume();
+            return;
+        }
+
+        const buffer = audioBuffers.get(soundType);
+        if (!buffer) {
+            console.warn(`未找到音效: ${soundType}`);
+            return;
+        }
+
+        try {
+            const source = audioContext.createBufferSource();
+            const gainNode = audioContext.createGain();
+            
+            source.buffer = buffer;
+            gainNode.gain.value = 0.6; // 设置音量
+            
+            source.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            source.start(0);
+        } catch (error) {
+            console.error('播放音效失败:', error);
+        }
     }
 
     function randomTime(min, max) {
@@ -166,7 +212,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mole = hole.querySelector('.mole');
         
         mole.classList.add('show');
-        playSound(popSound); // 播放地鼠出现的音效
+        playSound('pop');
         
         setTimeout(() => {
             if (!mole.classList.contains('bonked')) {
@@ -182,68 +228,27 @@ document.addEventListener('DOMContentLoaded', () => {
             if (count > 0) {
                 setTimeout(() => countdown(count - 1).then(resolve), 1000);
             } else {
-                playSound(popSound); // 只在倒计时结束时播放一次提示音
+                playSound('pop'); // 只在倒计时结束时播放一次提示音
                 resolve();
             }
         });
     }
 
-    // 添加游戏结束处理函数
-    function handleGameEnd() {
-        clearInterval(gameInterval);
-        isPlaying = false;
-        startButton.disabled = false;
-        startButton.textContent = originalButtonText;
-        
-        moles.forEach(mole => {
-            mole.classList.remove('show', 'bonked');
-        });
-
-        // 播放结束音效
-        endSound.currentTime = 0; // 重置音频播放位置
-        endSound.play().catch(error => {
-            console.log('播放结束音效失败:', error);
-        });
-
-        // 根据得分显示不同的结束信息
-        let message = '';
-        if (score > 33) {
-            message = '恭喜你打败了曹星妍大魔王！';
-        } else if (score >= 20) {
-            message = '你怎么蔡如曹星妍！';
-        } else {
-            message = '你是曹星妍的手下败将！';
-        }
-
-        // 创建自定义结束对话框
-        const dialog = document.createElement('div');
-        dialog.className = 'game-over-dialog';
-        dialog.innerHTML = `
-            <div class="game-over-content">
-                <h2>游戏结束</h2>
-                <p>你的得分是: ${score}</p>
-                <p class="result-message">${message}</p>
-                <button class="restart-button">重新开始</button>
-            </div>
-        `;
-
-        document.body.appendChild(dialog);
-
-        // 添加重新开始按钮事件
-        const restartButton = dialog.querySelector('.restart-button');
-        restartButton.addEventListener('click', () => {
-            endSound.pause(); // 停止结束音效
-            endSound.currentTime = 0; // 重置音频位置
-            document.body.removeChild(dialog);
-            startGame(); // 重新开始游戏
-        });
-    }
-
+    // 修改游戏开始逻辑，确保音频上下文已初始化
     async function startGame() {
         if (isPlaying) return;
         
+        // 确保音频上下文已初始化
+        if (!audioContext) {
+            await initAudio();
+        }
+        
+        // 恢复音频上下文（iOS要求用户交互后才能播放声音）
+        if (audioContext?.state === 'suspended') {
+            await audioContext.resume();
+        }
+        
         startButton.disabled = true;
-        // 开始3秒倒计时
         await countdown(3);
         
         score = 0;
@@ -283,10 +288,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const hitEffect = hole.querySelector('.hit-effect');
         
         if (!mole.classList.contains('show') || mole.classList.contains('bonked')) {
-            // 没点中地鼠
             const currentTime = Date.now();
-            if (currentTime - lastMissTime < 1000) { // 如果两次没点中的时间间隔小于1秒
-                playSound(missSound); // 播放没点中的音效
+            if (currentTime - lastMissTime < 1000) {
+                playSound('miss');
             }
             lastMissTime = currentTime;
             return;
@@ -294,13 +298,12 @@ document.addEventListener('DOMContentLoaded', () => {
         
         score++;
         scoreDisplay.textContent = score;
-        lastMissTime = 0; // 重置没点中时间
+        lastMissTime = 0;
         
         mole.classList.add('bonked');
         hitEffect.classList.add('show');
         
-        // 播放打中音效
-        playSound(hitSound);
+        playSound('hit');
         
         setTimeout(() => {
             mole.classList.remove('show');
