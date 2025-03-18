@@ -10,12 +10,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const timeDisplay = document.querySelector('#time');
     const startButton = document.querySelector('#startButton');
     
-    // 创建音效
-    const hitSound = new Audio('sounds/hit.mp3');
-    const popSound = new Audio('sounds/pop.mp3');
-    const missSound = new Audio('sounds/miss.mp3');
-    const endSound = new Audio('sounds/end.mp3'); // 添加结束音效
-    
+    // 音效系统
+    class SoundPool {
+        constructor(src, poolSize = 3) {
+            this.sounds = Array(poolSize).fill(null).map(() => {
+                const audio = new Audio(src);
+                audio.volume = 0.6;
+                return audio;
+            });
+            this.currentIndex = 0;
+        }
+
+        play() {
+            const sound = this.sounds[this.currentIndex];
+            
+            // 如果当前音效正在播放，立即重置
+            if (!sound.paused) {
+                sound.currentTime = 0;
+            }
+            
+            // 使用 Promise 来处理播放
+            const playPromise = sound.play();
+            if (playPromise !== undefined) {
+                playPromise.catch(error => {
+                    console.log('音效播放失败:', error);
+                });
+            }
+
+            // 更新索引到下一个音效
+            this.currentIndex = (this.currentIndex + 1) % this.sounds.length;
+        }
+
+        stop() {
+            this.sounds.forEach(sound => {
+                sound.pause();
+                sound.currentTime = 0;
+            });
+        }
+    }
+
+    // 创建音效池
+    const hitSoundPool = new SoundPool('sounds/hit.mp3', 3);
+    const popSoundPool = new SoundPool('sounds/pop.mp3', 3);
+    const missSoundPool = new SoundPool('sounds/miss.mp3', 3);
+    const endSound = new Audio('sounds/end.mp3');
+    endSound.volume = 0.6;
+
     let score = 0;
     let timeLeft = 30;
     let gameInterval;
@@ -128,26 +168,45 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, { passive: false });
 
-    // 播放音效的函数
-    function playSound(sound) {
-        const soundClone = sound.cloneNode();
-        soundClone.volume = 0.6;
-        soundClone.play().catch(error => {
-            console.log('播放音效失败:', error);
-        });
+    // 预加载所有音效
+    function preloadSounds() {
+        const sounds = [
+            ...hitSoundPool.sounds,
+            ...popSoundPool.sounds,
+            ...missSoundPool.sounds,
+            endSound
+        ];
+
+        return Promise.all(sounds.map(sound => {
+            return new Promise((resolve) => {
+                sound.preload = 'auto';
+                sound.addEventListener('canplaythrough', resolve, { once: true });
+                sound.load();
+            });
+        }));
+    }
+
+    // 优化的播放音效函数
+    function playSound(soundPool) {
+        if (!soundPool) return;
+        soundPool.play();
     }
 
     function randomTime(min, max) {
         return Math.round(Math.random() * (max - min) + min);
     }
 
-    function randomHole(holes) {
-        const index = Math.floor(Math.random() * holes.length);
-        const hole = holes[index];
+    function randomHole(holes, excludeHoles = []) {
+        const availableHoles = Array.from(holes).filter(hole => 
+            !hole.lastHole && !excludeHoles.includes(hole)
+        );
         
-        if (hole.lastHole) {
-            return randomHole(holes);
+        if (availableHoles.length === 0) {
+            return null;
         }
+        
+        const index = Math.floor(Math.random() * availableHoles.length);
+        const hole = availableHoles[index];
         
         hole.lastHole = true;
         setTimeout(() => {
@@ -157,20 +216,43 @@ document.addEventListener('DOMContentLoaded', () => {
         return hole;
     }
 
+    function getRandomMoleCount() {
+        const rand = Math.random();
+        if (rand < 0.1) {  // 10% 概率
+            return 3;
+        } else if (rand < 0.4) {  // 30% 概率
+            return 2;
+        }
+        return 1;  // 60% 概率
+    }
+
     function peep() {
         if (!isPlaying) return;
 
         const time = randomTime(500, 1000);
-        const hole = randomHole(holes);
-        const mole = hole.querySelector('.mole');
+        const moleCount = getRandomMoleCount();
+        const selectedHoles = [];
         
-        mole.classList.add('show');
-        playSound(popSound); // 播放地鼠出现的音效
+        // 选择指定数量的不重复地洞
+        for (let i = 0; i < moleCount; i++) {
+            const hole = randomHole(holes, selectedHoles);
+            if (hole) {
+                selectedHoles.push(hole);
+                const mole = hole.querySelector('.mole');
+                // 确保移除之前的所有状态
+                mole.classList.remove('bonked');
+                mole.classList.add('show');
+                playSound(popSoundPool);
+            }
+        }
         
         setTimeout(() => {
-            if (!mole.classList.contains('bonked')) {
-                mole.classList.remove('show');
-            }
+            selectedHoles.forEach(hole => {
+                const mole = hole.querySelector('.mole');
+                if (!mole.classList.contains('bonked')) {
+                    mole.classList.remove('show');
+                }
+            });
             if (isPlaying) peep();
         }, time);
     }
@@ -181,7 +263,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (count > 0) {
                 setTimeout(() => countdown(count - 1).then(resolve), 1000);
             } else {
-                playSound(popSound); // 只在倒计时结束时播放一次提示音
+                playSound(popSoundPool); // 只在倒计时结束时播放一次提示音
                 resolve();
             }
         });
@@ -199,6 +281,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function showEndDialog(score) {
         const message = getEndMessage(score);
+        endSound.currentTime = 0;
         endSound.play().catch(error => {
             console.log('播放结束音效失败:', error);
         });
@@ -218,8 +301,8 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const restartButton = dialog.querySelector('.restart-button');
         restartButton.addEventListener('click', () => {
-            endSound.pause(); // 停止结束音效
-            endSound.currentTime = 0; // 重置音效播放位置
+            endSound.pause();
+            endSound.currentTime = 0;
             document.body.removeChild(dialog);
             startGame();
         });
@@ -228,6 +311,13 @@ document.addEventListener('DOMContentLoaded', () => {
     async function startGame() {
         if (isPlaying) return;
         
+        // 预加载音效
+        try {
+            await preloadSounds();
+        } catch (error) {
+            console.warn('音效预加载失败:', error);
+        }
+
         startButton.disabled = true;
         // 开始3秒倒计时
         await countdown(3);
@@ -275,33 +365,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const mole = hole.querySelector('.mole');
         const hitEffect = hole.querySelector('.hit-effect');
         
-        if (!mole.classList.contains('show') || mole.classList.contains('bonked')) {
-            // 没点中地鼠
-            const currentTime = Date.now();
-            if (currentTime - lastMissTime < 1000) { // 如果两次没点中的时间间隔小于1秒
-                playSound(missSound); // 播放没点中的音效
-            }
-            lastMissTime = currentTime;
-            return;
-        }
-        
-        score++;
-        scoreDisplay.textContent = score;
-        lastMissTime = 0; // 重置没点中时间
-        
-        mole.classList.add('bonked');
-        hitEffect.classList.add('show');
-        
-        // 播放打中音效
-        playSound(hitSound);
-        
-        setTimeout(() => {
-            mole.classList.remove('show');
-            hitEffect.classList.remove('show');
+        if (mole.classList.contains('show') && !mole.classList.contains('bonked')) {
+            // 击中地鼠
+            playSound(hitSoundPool);
+            mole.classList.add('bonked');
+            hitEffect.classList.add('show');
+            score++;
+            scoreDisplay.textContent = score;
+            lastMissTime = 0; // 重置未击中计时
+            
+            // 分两步移除效果，使动画更明显
             setTimeout(() => {
-                mole.classList.remove('bonked');
-            }, 200);
-        }, 500);
+                mole.classList.remove('show');
+                hitEffect.classList.remove('show');
+                setTimeout(() => {
+                    mole.classList.remove('bonked');
+                }, 200);
+            }, 500);
+        } else if (!mole.classList.contains('show') || mole.classList.contains('bonked')) {
+            // 未击中或点击已经被打中的地鼠
+            const now = Date.now();
+            if (now - lastMissTime < 1000 && lastMissTime !== 0) { // 1秒内的连续未击中，且不是第一次未击中
+                playSound(missSoundPool);
+            }
+            lastMissTime = now;
+        }
     }
 
     // 将事件监听器绑定到地洞而不是地鼠上
