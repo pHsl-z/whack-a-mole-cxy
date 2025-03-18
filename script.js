@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const hitSound = new Audio('sounds/hit.mp3');
     const popSound = new Audio('sounds/pop.mp3');
     const missSound = new Audio('sounds/miss.mp3');
-    const endSound = new Audio('sounds/end.mp3'); // 添加结束音效
     
     let score = 0;
     let timeLeft = 30;
@@ -67,8 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
             { type: 'image', src: 'images/mole-bonked.png', critical: true },
             { type: 'audio', src: 'sounds/hit.mp3', critical: false },
             { type: 'audio', src: 'sounds/pop.mp3', critical: false },
-            { type: 'audio', src: 'sounds/miss.mp3', critical: false },
-            { type: 'audio', src: 'sounds/end.mp3', critical: false }  // 添加结束音效资源
+            { type: 'audio', src: 'sounds/miss.mp3', critical: false }
         ];
 
         let loadedCount = 0;
@@ -188,57 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    // 添加游戏结束处理函数
-    function handleGameEnd() {
-        clearInterval(gameInterval);
-        isPlaying = false;
-        startButton.disabled = false;
-        startButton.textContent = originalButtonText;
-        
-        moles.forEach(mole => {
-            mole.classList.remove('show', 'bonked');
-        });
-
-        // 播放结束音效
-        endSound.currentTime = 0; // 重置音频播放位置
-        endSound.play().catch(error => {
-            console.log('播放结束音效失败:', error);
-        });
-
-        // 根据得分显示不同的结束信息
-        let message = '';
-        if (score > 33) {
-            message = '恭喜你打败了曹星妍大魔王！';
-        } else if (score >= 20) {
-            message = '你怎么蔡如曹星妍！';
-        } else {
-            message = '你是曹星妍的手下败将！';
-        }
-
-        // 创建自定义结束对话框
-        const dialog = document.createElement('div');
-        dialog.className = 'game-over-dialog';
-        dialog.innerHTML = `
-            <div class="game-over-content">
-                <h2>游戏结束</h2>
-                <p>你的得分是: ${score}</p>
-                <p class="result-message">${message}</p>
-                <button class="restart-button">重新开始</button>
-            </div>
-        `;
-
-        document.body.appendChild(dialog);
-
-        // 添加重新开始按钮事件
-        const restartButton = dialog.querySelector('.restart-button');
-        restartButton.addEventListener('click', () => {
-            endSound.pause(); // 停止结束音效
-            endSound.currentTime = 0; // 重置音频位置
-            document.body.removeChild(dialog);
-            startGame(); // 重新开始游戏
-        });
-    }
-
     async function startGame() {
         if (isPlaying) return;
         
@@ -249,11 +196,12 @@ document.addEventListener('DOMContentLoaded', () => {
         score = 0;
         timeLeft = 30;
         isPlaying = true;
-        lastMissTime = 0;
+        lastMissTime = 0; // 重置没点中时间
         scoreDisplay.textContent = score;
         timeDisplay.textContent = timeLeft;
         startButton.textContent = timeLeft + '秒';
         
+        // 确保所有地鼠和效果都重置状态
         moles.forEach(mole => {
             mole.classList.remove('show', 'bonked');
         });
@@ -269,7 +217,14 @@ document.addEventListener('DOMContentLoaded', () => {
             startButton.textContent = timeLeft + '秒';
             
             if (timeLeft <= 0) {
-                handleGameEnd();
+                clearInterval(gameInterval);
+                isPlaying = false;
+                startButton.disabled = false;
+                startButton.textContent = originalButtonText;
+                moles.forEach(mole => {
+                    mole.classList.remove('show', 'bonked');
+                });
+                alert(`游戏结束！你的得分是: ${score}`);
             }
         }, 1000);
     }
