@@ -22,20 +22,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let lastMissTime = 0;
     const originalButtonText = startButton.textContent;
 
-    // 加载资源
-    async function loadResources() {
-        const resources = [
-            { type: 'image', src: 'images/mole.png' },
-            { type: 'image', src: 'images/mole-bonked.png' },
-            { type: 'audio', src: 'sounds/hit.mp3' },
-            { type: 'audio', src: 'sounds/pop.mp3' },
-            { type: 'audio', src: 'sounds/miss.mp3' }
-        ];
-
-        let loadedCount = 0;
-        const totalResources = resources.length;
-
-        for (const resource of resources) {
+    async function loadResource(resource, retries = 3) {
+        for (let i = 0; i < retries; i++) {
             try {
                 if (resource.type === 'image') {
                     await new Promise((resolve, reject) => {
@@ -43,32 +31,83 @@ document.addEventListener('DOMContentLoaded', () => {
                         img.onload = resolve;
                         img.onerror = reject;
                         img.src = resource.src;
+                        // 设置5秒超时
+                        setTimeout(() => reject(new Error('Timeout')), 5000);
                     });
+                    return true;
                 } else if (resource.type === 'audio') {
                     await new Promise((resolve, reject) => {
                         const audio = new Audio();
                         audio.oncanplaythrough = resolve;
                         audio.onerror = reject;
                         audio.src = resource.src;
+                        // 设置5秒超时
+                        setTimeout(() => reject(new Error('Timeout')), 5000);
                     });
+                    return true;
+                }
+            } catch (error) {
+                console.warn(`加载失败 ${resource.src}, 重试 ${i + 1}/${retries}`, error);
+                if (i === retries - 1) {
+                    console.error(`资源加载失败: ${resource.src}`, error);
+                    // 如果是非关键资源，允许继续
+                    return false;
+                }
+                // 等待一秒后重试
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+        return false;
+    }
+
+    async function loadResources() {
+        const resources = [
+            { type: 'image', src: 'images/mole.png', critical: true },
+            { type: 'image', src: 'images/mole-bonked.png', critical: true },
+            { type: 'audio', src: 'sounds/hit.mp3', critical: false },
+            { type: 'audio', src: 'sounds/pop.mp3', critical: false },
+            { type: 'audio', src: 'sounds/miss.mp3', critical: false }
+        ];
+
+        let loadedCount = 0;
+        const totalResources = resources.length;
+        const criticalResources = resources.filter(r => r.critical);
+
+        try {
+            // 优先加载关键资源
+            for (const resource of criticalResources) {
+                const success = await loadResource(resource);
+                if (!success && resource.critical) {
+                    throw new Error(`关键资源加载失败: ${resource.src}`);
                 }
                 loadedCount++;
                 const progress = (loadedCount / totalResources) * 100;
                 loadingProgress.style.width = `${progress}%`;
                 loadingPercentage.textContent = `${Math.round(progress)}%`;
-            } catch (error) {
-                console.error(`加载资源失败: ${resource.src}`, error);
             }
-        }
 
-        // 加载完成后显示游戏界面
-        setTimeout(() => {
-            welcomeScreen.style.opacity = '0';
+            // 加载非关键资源
+            const nonCriticalResources = resources.filter(r => !r.critical);
+            for (const resource of nonCriticalResources) {
+                await loadResource(resource);
+                loadedCount++;
+                const progress = (loadedCount / totalResources) * 100;
+                loadingProgress.style.width = `${progress}%`;
+                loadingPercentage.textContent = `${Math.round(progress)}%`;
+            }
+
+            // 所有资源加载完成或超时后，显示游戏界面
             setTimeout(() => {
-                welcomeScreen.style.display = 'none';
-                gameContainer.style.display = 'block';
+                welcomeScreen.style.opacity = '0';
+                setTimeout(() => {
+                    welcomeScreen.style.display = 'none';
+                    gameContainer.style.display = 'block';
+                }, 500);
             }, 500);
-        }, 500);
+        } catch (error) {
+            console.error('资源加载失败:', error);
+            loadingPercentage.textContent = '加载失败，请刷新重试';
+        }
     }
 
     // 开始加载资源
