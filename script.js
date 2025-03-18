@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const hitSound = new Audio('sounds/hit.mp3');
     const popSound = new Audio('sounds/pop.mp3');
     const missSound = new Audio('sounds/miss.mp3');
+    const endSound = new Audio('sounds/end.mp3'); // 添加结束音效
     
     let score = 0;
     let timeLeft = 30;
@@ -186,6 +187,44 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function getEndMessage(score) {
+        if (score > 30) {
+            return "恭喜你打败了曹星妍大魔王！";
+        } else if (score >= 20) {
+            return "你怎么蔡如曹星妍！";
+        } else {
+            return "你是曹星妍的手下败将！";
+        }
+    }
+
+    function showEndDialog(score) {
+        const message = getEndMessage(score);
+        endSound.play().catch(error => {
+            console.log('播放结束音效失败:', error);
+        });
+        
+        const dialog = document.createElement('div');
+        dialog.className = 'end-dialog';
+        dialog.innerHTML = `
+            <div class="end-content">
+                <h2>游戏结束</h2>
+                <p>你的得分是: ${score}</p>
+                <p class="end-message">${message}</p>
+                <button class="restart-button">重新开始</button>
+            </div>
+        `;
+        
+        document.body.appendChild(dialog);
+        
+        const restartButton = dialog.querySelector('.restart-button');
+        restartButton.addEventListener('click', () => {
+            endSound.pause(); // 停止结束音效
+            endSound.currentTime = 0; // 重置音效播放位置
+            document.body.removeChild(dialog);
+            startGame();
+        });
+    }
+
     async function startGame() {
         if (isPlaying) return;
         
@@ -196,12 +235,11 @@ document.addEventListener('DOMContentLoaded', () => {
         score = 0;
         timeLeft = 30;
         isPlaying = true;
-        lastMissTime = 0; // 重置没点中时间
+        lastMissTime = 0;
         scoreDisplay.textContent = score;
         timeDisplay.textContent = timeLeft;
         startButton.textContent = timeLeft + '秒';
         
-        // 确保所有地鼠和效果都重置状态
         moles.forEach(mole => {
             mole.classList.remove('show', 'bonked');
         });
@@ -224,7 +262,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 moles.forEach(mole => {
                     mole.classList.remove('show', 'bonked');
                 });
-                alert(`游戏结束！你的得分是: ${score}`);
+                showEndDialog(score);
             }
         }, 1000);
     }
