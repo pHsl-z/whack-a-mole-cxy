@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
             moleShowTime: { min: 1500, max: 2000 },
             multiMoleChance: { two: 0.6, three: 0.3 },
             requiredHitRate: 0 // 不点也能通关
+        }
     };
 
     async function loadResource(resource, retries = 3) {
