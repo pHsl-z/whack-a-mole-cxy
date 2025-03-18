@@ -57,11 +57,49 @@ document.addEventListener('DOMContentLoaded', () => {
     endSound.volume = 0.6;
 
     let score = 0;
-    let timeLeft = 30;
+    let timeLeft = 15;
     let gameInterval;
     let isPlaying = false;
     let lastMissTime = 0;
+    let currentLevel = 1;
+    const maxLevel = 5;
     const originalButtonText = startButton.textContent;
+    let totalMoles = 0; // 记录出现的地鼠总数
+    let hitMoles = 0;   // 记录打中的地鼠数
+    let totalScore = 0; // 添加总分变量
+
+    // 关卡配置
+    const levelConfig = {
+        1: {
+            time: 5,
+            moleShowTime: { min: 1000, max: 2000 },
+            multiMoleChance: { two: 0.02, three: 0.01 },
+            requiredHitRate: 0.50  // 50%通过率
+        },
+        2: {
+            time: 15,
+            moleShowTime: { min: 600, max: 1000 },
+            multiMoleChance: { two: 0.2, three: 0.2 },
+            requiredHitRate: 0.6
+        },
+        3: {
+            time: 5,
+            moleShowTime: { min: 1000, max: 1500 },
+            multiMoleChance: { two: 0.1, three: 0.05 },
+            requiredHitRate: 0.10
+        },
+        4: {
+            time: 15,
+            moleShowTime: { min: 600, max: 800 },
+            multiMoleChance: { two: 0.5, three: 0.5 },
+            requiredHitRate: 0.6
+        },
+        5: {
+            time: 6,
+            moleShowTime: { min: 1500, max: 2000 },
+            multiMoleChance: { two: 0.6, three: 0.3 },
+            requiredHitRate: 0 // 不点也能通关
+    };
 
     async function loadResource(resource, retries = 3) {
         for (let i = 0; i < retries; i++) {
@@ -217,21 +255,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getRandomMoleCount() {
+        const config = levelConfig[currentLevel].multiMoleChance;
         const rand = Math.random();
-        if (rand < 0.1) {  // 10% 概率
+        if (rand < config.three) {  // 三只地鼠的概率
             return 3;
-        } else if (rand < 0.4) {  // 30% 概率
+        } else if (rand < config.two) {  // 两只地鼠的概率
             return 2;
         }
-        return 1;  // 60% 概率
+        return 1;
     }
 
     function peep() {
         if (!isPlaying) return;
 
-        const time = randomTime(500, 1000);
+        const config = levelConfig[currentLevel].moleShowTime;
+        const time = randomTime(config.min, config.max);
         const moleCount = getRandomMoleCount();
         const selectedHoles = [];
+        
+        totalMoles += moleCount; // 增加地鼠计数
         
         // 选择指定数量的不重复地洞
         for (let i = 0; i < moleCount; i++) {
@@ -269,47 +311,159 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function getEndMessage(score) {
-        if (score > 30) {
-            return "恭喜你打败了曹星妍大魔王！";
-        } else if (score >= 20) {
-            return "你怎么蔡如曹星妍！";
-        } else {
-            return "你是曹星妍的手下败将！";
-        }
+    function getLevelMessage(level) {
+        return `第 ${level} 关`;
     }
 
-    function showEndDialog(score) {
-        const message = getEndMessage(score);
-        endSound.currentTime = 0;
-        endSound.play().catch(error => {
-            console.log('播放结束音效失败:', error);
-        });
-        
+    function showLevelStartDialog(level) {
         const dialog = document.createElement('div');
         dialog.className = 'end-dialog';
         dialog.innerHTML = `
             <div class="end-content">
-                <h2>游戏结束</h2>
-                <p>你的得分是: ${score}</p>
-                <p class="end-message">${message}</p>
-                <button class="restart-button">重新开始</button>
+                <h2>${getLevelMessage(level)}</h2>
+                <p class="level-description">难度：${'⭐'.repeat(level)}</p>
+                <p class="level-tips">${getLevelTips(level)}</p>
+                <button class="restart-button">开始</button>
             </div>
         `;
         
         document.body.appendChild(dialog);
         
-        const restartButton = dialog.querySelector('.restart-button');
-        restartButton.addEventListener('click', () => {
+        return new Promise(resolve => {
+            const startButton = dialog.querySelector('.restart-button');
+            startButton.addEventListener('click', () => {
+                document.body.removeChild(dialog);
+                resolve();
+            });
+        });
+    }
+
+    function getLevelTips(level) {
+        const tips = {
+            1: "第一关如天堑难以逾越",
+            2: "注意可能出现全屏幕的曹大魔王！",
+            3: "过了这关作者会得到您的奖励10元",
+            4: "让您放松一会儿",
+            5: "厉害啊，最后一关您可是过不了的"
+        };
+        return tips[level];
+    }
+
+    function getHitRate() {
+        return totalMoles === 0 ? 0 : hitMoles / totalMoles;
+    }
+
+    function getEndMessage(score, level) {
+        const hitRate = getHitRate();
+        const requiredRate = levelConfig[level].requiredHitRate;
+        const totalHitRate = hitMoles / totalMoles;
+        
+        if (level === maxLevel) {
+            if (totalHitRate >= 0.9) {  // 90%命中率
+                return `如宋老般实力碾压！总命中率：${Math.round(totalHitRate * 100)}%`;
+            }
+            if (hitRate >= requiredRate) {
+                return "您疯了吗，我倒计时10分钟您是硬生生打完了？您不知道最后一关挂机也能过吗？手酸不？后悔不？作业做了吗？您打完的消息已经上传给宋老，等着加作业吧！";
+            }
+        }
+        
+        if (hitRate >= requiredRate) {
+            if (level === 3) {
+                return "说到做到，赶紧奖励作者10元！";
+            }
+            if (level === 1) {
+                return "简单吧，因为您是天才啊";
+            }
+            if (level === 4) {
+                return "小瞧您了，下关你可过不了！";
+            }
+            if (level === 2) {
+                return "厉害，这也能过，下关加油有奖励";
+            }
+            if (level < maxLevel) {
+                return "天才般的黄金双手！";
+            }
+        } else {
+            return "你蔡如曹星妍，继续努力吧！";
+        }
+        
+        return "游戏结束！";
+    }
+
+    function playEndSound(level) {
+        endSound.currentTime = 0;
+        
+        // 计算当前关卡应该播放的音频长度比例（20% * 当前关卡）
+        const playRatio = Math.min(0.2 * level, 1);
+        
+        // 播放音效
+        endSound.play().then(() => {
+            // 设置定时器在指定时间后停止播放
+            setTimeout(() => {
+                endSound.pause();
+                endSound.currentTime = 0;
+            }, endSound.duration * 1000 * playRatio);
+        }).catch(error => {
+            console.log('播放结束音效失败:', error);
+        });
+    }
+
+    function showEndDialog(score) {
+        const hitRate = getHitRate();
+        const requiredRate = levelConfig[currentLevel].requiredHitRate;
+        totalScore += score;
+        const message = getEndMessage(score, currentLevel);
+        
+        // 使用新的音效播放函数
+        playEndSound(currentLevel);
+        
+        const dialog = document.createElement('div');
+        dialog.className = 'end-dialog';
+        dialog.innerHTML = `
+            <div class="end-content">
+                <h2>第 ${currentLevel} 关结束</h2>
+                <p>本关得分: ${score}</p>
+                <p>总得分: ${totalScore}</p>
+                <p>命中率: ${Math.round(hitRate * 100)}% (需要 ${Math.round(requiredRate * 100)}%)</p>
+                <p class="end-message">${message}</p>
+                ${hitRate >= requiredRate && currentLevel < maxLevel ? 
+                    '<button class="next-level-button">下一关</button>' : 
+                    '<button class="restart-button">重新开始</button>'}
+            </div>
+        `;
+        
+        document.body.appendChild(dialog);
+        
+        const nextButton = dialog.querySelector('.next-level-button') || dialog.querySelector('.restart-button');
+        nextButton.addEventListener('click', () => {
             endSound.pause();
             endSound.currentTime = 0;
             document.body.removeChild(dialog);
-            startGame();
+            if (hitRate >= requiredRate && currentLevel < maxLevel) {
+                currentLevel++;
+                startGame();
+            } else {
+                currentLevel = 1;
+                totalScore = 0;
+                startGame();
+            }
         });
     }
 
     async function startGame() {
         if (isPlaying) return;
+        
+        // 如果是第一关，重置总分
+        if (currentLevel === 1) {
+            totalScore = 0;
+        }
+        
+        // 重置计数器
+        totalMoles = 0;
+        hitMoles = 0;
+        
+        // 显示关卡开始对话框
+        await showLevelStartDialog(currentLevel);
         
         // 预加载音效
         try {
@@ -319,11 +473,10 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         startButton.disabled = true;
-        // 开始3秒倒计时
-        await countdown(3);
+        await countdown(2);  // 修改为2秒倒计时
         
         score = 0;
-        timeLeft = 30;
+        timeLeft = levelConfig[currentLevel].time;
         isPlaying = true;
         lastMissTime = 0;
         scoreDisplay.textContent = score;
@@ -367,12 +520,13 @@ document.addEventListener('DOMContentLoaded', () => {
         
         if (mole.classList.contains('show') && !mole.classList.contains('bonked')) {
             // 击中地鼠
+            hitMoles++; // 增加打中计数
             playSound(hitSoundPool);
             mole.classList.add('bonked');
             hitEffect.classList.add('show');
             score++;
             scoreDisplay.textContent = score;
-            lastMissTime = 0; // 重置未击中计时
+            lastMissTime = 0;
             
             // 分两步移除效果，使动画更明显
             setTimeout(() => {
