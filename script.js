@@ -67,6 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let totalMoles = 0; // 记录出现的地鼠总数
     let hitMoles = 0;   // 记录打中的地鼠数
     let totalScore = 0; // 添加总分变量
+    let isLoading = false; // 添加加载状态标志
 
     // 关卡配置
     const levelConfig = {
@@ -90,12 +91,12 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         4: {
             time: 15,
-            moleShowTime: { min: 600, max: 800 },
+            moleShowTime: { min: 500, max: 800 },
             multiMoleChance: { two: 0.5, three: 0.5 },
-            requiredHitRate: 0.6
+            requiredHitRate: 0.7
         },
         5: {
-            time: 6,
+            time: 600,
             moleShowTime: { min: 1500, max: 2000 },
             multiMoleChance: { two: 0.6, three: 0.3 },
             requiredHitRate: 0 // 不点也能通关
@@ -452,63 +453,74 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function startGame() {
-        if (isPlaying) return;
+        if (isPlaying || isLoading) return;
         
-        // 如果是第一关，重置总分
-        if (currentLevel === 1) {
-            totalScore = 0;
-        }
-        
-        // 重置计数器
-        totalMoles = 0;
-        hitMoles = 0;
-        
-        // 显示关卡开始对话框
-        await showLevelStartDialog(currentLevel);
-        
-        // 预加载音效
         try {
-            await preloadSounds();
-        } catch (error) {
-            console.warn('音效预加载失败:', error);
-        }
-
-        startButton.disabled = true;
-        await countdown(2);  // 修改为2秒倒计时
-        
-        score = 0;
-        timeLeft = levelConfig[currentLevel].time;
-        isPlaying = true;
-        lastMissTime = 0;
-        scoreDisplay.textContent = score;
-        timeDisplay.textContent = timeLeft;
-        startButton.textContent = timeLeft + '秒';
-        
-        moles.forEach(mole => {
-            mole.classList.remove('show', 'bonked');
-        });
-        hitEffects.forEach(effect => {
-            effect.classList.remove('show');
-        });
-        
-        peep();
-        
-        gameInterval = setInterval(() => {
-            timeLeft--;
+            isLoading = true;
+            startButton.disabled = true;
+            startButton.textContent = '加载中...';
+            
+            // 如果是第一关，重置总分
+            if (currentLevel === 1) {
+                totalScore = 0;
+            }
+            
+            // 重置计数器
+            totalMoles = 0;
+            hitMoles = 0;
+            
+            // 预加载音效
+            try {
+                await preloadSounds();
+            } catch (error) {
+                console.warn('音效预加载失败:', error);
+            }
+            
+            // 显示关卡开始对话框
+            await showLevelStartDialog(currentLevel);
+            
+            await countdown(2);  // 修改为2秒倒计时
+            
+            score = 0;
+            timeLeft = levelConfig[currentLevel].time;
+            isPlaying = true;
+            lastMissTime = 0;
+            scoreDisplay.textContent = score;
             timeDisplay.textContent = timeLeft;
             startButton.textContent = timeLeft + '秒';
             
-            if (timeLeft <= 0) {
-                clearInterval(gameInterval);
-                isPlaying = false;
-                startButton.disabled = false;
-                startButton.textContent = originalButtonText;
-                moles.forEach(mole => {
-                    mole.classList.remove('show', 'bonked');
-                });
-                showEndDialog(score);
-            }
-        }, 1000);
+            moles.forEach(mole => {
+                mole.classList.remove('show', 'bonked');
+            });
+            hitEffects.forEach(effect => {
+                effect.classList.remove('show');
+            });
+            
+            peep();
+            
+            gameInterval = setInterval(() => {
+                timeLeft--;
+                timeDisplay.textContent = timeLeft;
+                startButton.textContent = timeLeft + '秒';
+                
+                if (timeLeft <= 0) {
+                    clearInterval(gameInterval);
+                    isPlaying = false;
+                    startButton.disabled = false;
+                    startButton.textContent = originalButtonText;
+                    moles.forEach(mole => {
+                        mole.classList.remove('show', 'bonked');
+                    });
+                    showEndDialog(score);
+                }
+            }, 1000);
+        } catch (error) {
+            console.error('游戏启动失败:', error);
+            startButton.disabled = false;
+            startButton.textContent = originalButtonText;
+        } finally {
+            isLoading = false;
+        }
     }
 
     function bonk(e) {
